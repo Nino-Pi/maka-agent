@@ -15,7 +15,7 @@ describe('local MEMORY.md Settings UI contract', () => {
 
     assert.match(src, /<MemoryEntryList[\s\S]*title="生效记忆"[\s\S]*entries=\{filteredActiveEntries\}/);
     assert.match(src, /<MemoryEntryList[\s\S]*title="已归档记忆"[\s\S]*entries=\{filteredArchivedEntries\}[\s\S]*archived/);
-    assert.match(src, /effective\.archivedEntries\.length > 0/);
+    assert.match(src, /visibleMemoryEntries\.archivedEntries\.length > 0/);
     assert.ok(src.includes("entry.tags.join(' / ')"));
   });
 
@@ -201,6 +201,34 @@ describe('local MEMORY.md Settings UI contract', () => {
     assert.match(pageBlock, /disabled=\{busy \|\| !effective\.enabled \|\| !memoryDraftDirty\}/);
     assert.match(pageBlock, /\{memoryDraftDirty \? '保存' : '已保存'\}/);
     assert.match(css, /\.settingsMemoryDirtyState\[data-dirty="true"\]/);
+  });
+
+  it('parses entry cards from the visible MEMORY.md draft while unsaved edits are pending', async () => {
+    const src = await readRepo('apps/desktop/src/renderer/settings/SettingsModal.tsx');
+    const pageBlock = src.match(/function MemorySettingsPage\([\s\S]*?function MemoryEntryList/)?.[0] ?? '';
+
+    assert.match(src, /parseLocalMemoryMarkdown/);
+    assert.match(pageBlock, /const draftMemoryEntries = useMemo\(\(\) => parseLocalMemoryMarkdown\(draft\), \[draft\]\)/);
+    assert.match(pageBlock, /const visibleMemoryEntries = memoryDraftDirty \? draftMemoryEntries : effective/);
+    assert.match(pageBlock, /visibleMemoryEntries\.activeEntries/);
+    assert.match(pageBlock, /visibleMemoryEntries\.archivedEntries/);
+    assert.match(pageBlock, /visibleMemoryEntries\.entries\.length > 0/);
+    assert.match(pageBlock, /\$\{visibleMemoryEntries\.entries\.length\} 条记忆/);
+    assert.match(pageBlock, /memoryDraftDirty \? '草稿 ' : ''/);
+  });
+
+  it('shows a clear safe-mode reason when draft entry preview is paused', async () => {
+    const src = await readRepo('apps/desktop/src/renderer/settings/SettingsModal.tsx');
+    const css = await readRepo('apps/desktop/src/renderer/styles.css');
+    const pageBlock = src.match(/function MemorySettingsPage\([\s\S]*?function MemoryEntryList/)?.[0] ?? '';
+
+    assert.match(pageBlock, /const memoryEntryPreviewBlockedReason =/);
+    assert.match(pageBlock, /memoryDraftDirty && draftMemoryEntries\.safeMode/);
+    assert.match(pageBlock, /草稿过大，条目预览已暂停/);
+    assert.match(pageBlock, /settingsMemoryEntryPreviewNotice/);
+    assert.match(pageBlock, /role="status"/);
+    assert.match(pageBlock, /草稿条目预览暂停/);
+    assert.match(css, /\.settingsMemoryEntryPreviewNotice/);
   });
 
   it('can reload the visible MEMORY.md draft from disk to discard unsaved edits', async () => {
