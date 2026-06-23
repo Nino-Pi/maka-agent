@@ -10129,17 +10129,18 @@ button:active {
  * Each provider is a collapsible row; its connections live in the panel, so
  * the list reads as provider over connection instead of a flat peer list.
  * Problem providers open by default (see defaultOpenGroups). ---- */
+/* Seamless list: no card box (it was the heaviest element on the page and
+ * clashed with the catalog below). Hairline top/bottom bounds the group;
+ * whitespace + the logo plates carry the structure. */
 .enabledAccordion {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--foreground-3);
-  overflow: hidden;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   max-height: 360px;
   overflow-y: auto;
 }
 
 .enabledProvider + .enabledProvider {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid oklch(from var(--foreground) l c h / 0.06);
 }
 
 .enabledProviderHead { margin: 0; }
@@ -10149,7 +10150,11 @@ button:active {
   align-items: center;
   gap: 11px;
   width: 100%;
-  padding: 11px 14px;
+  /* pad-x 6 + logo 32 + gap 11 = 49 → connection name (pl-[49px]) sits
+   * directly under the provider name; pr keeps the rollup status right
+   * edge aligned with the connection status (pr-[32px] = 6 + chevron 15 +
+   * meta gap 11). */
+  padding: 11px 6px;
   background: transparent;
   border: 0;
   color: var(--foreground);
