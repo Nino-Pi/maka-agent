@@ -19,7 +19,7 @@
 //     `connectionName` promise) until sanitized display data is
 //     wired in a later PR.
 
-import { ChevronRight, RotateCcw, Sparkles, KeyRound, Settings as SettingsIcon, Cpu, AlertCircle, FolderOpen, Paperclip, X } from 'lucide-react';
+import { ArrowUp, ChevronRight, Sparkles, KeyRound, Settings as SettingsIcon, Cpu, AlertCircle } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import type { LlmConnection, OnboardingMilestone, OnboardingState, ProviderType, QuickChatMode, SettingsSection } from '@maka/core';
 import {
@@ -68,7 +68,7 @@ const READY_HERO_COPY_BY_LOCALE: Record<UiLocale, {
     // dropped the all-caps English prefix to match the Chinese-
     // first surface; en-locale entry below stays all-English.
     eyebrow: '准备就绪 · 开始对话',
-    headline: '你已经配置好了 —— 直接说说你想做什么。',
+    headline: '今天想让 Maka 帮你做什么？',
     intro: '下面这个输入框会用默认模型开新会话；空提交也会打开一个空会话，方便你之后再输入。',
     quickChatPlaceholder: '给 Maka 发消息…',
     quickChatAria: '快速对话输入框',
@@ -79,7 +79,7 @@ const READY_HERO_COPY_BY_LOCALE: Record<UiLocale, {
   en: {
     ariaLabel: 'Start a conversation',
     eyebrow: 'READY · Start a conversation',
-    headline: 'You\'re all set — just say what you want to do.',
+    headline: 'What should Maka help with today?',
     intro: 'The box below opens a new session with your default model; empty submit also opens a session so you can type later.',
     quickChatPlaceholder: 'Message Maka…',
     quickChatAria: 'Quick Chat input',
@@ -557,17 +557,7 @@ function ReadyEmptyHero(props: {
   }, []);
 
   const copy = READY_HERO_COPY_BY_LOCALE[detectUiLocale()];
-  const hiddenSuggestionIds = new Set(
-    (props.onboardingMilestones ?? [])
-      .filter((milestone) => milestone.skippedAt !== undefined)
-      .map((milestone) => milestone.id),
-  );
-  const visibleSuggestions = FIRST_RUN_TASK_SUGGESTIONS.filter(
-    (suggestion) => !hiddenSuggestionIds.has(FIRST_RUN_TASK_SUGGESTION_MILESTONES[suggestion.id]),
-  );
-  const hiddenSuggestions = FIRST_RUN_TASK_SUGGESTIONS.filter(
-    (suggestion) => hiddenSuggestionIds.has(FIRST_RUN_TASK_SUGGESTION_MILESTONES[suggestion.id]),
-  );
+  const visibleSuggestions = FIRST_RUN_TASK_SUGGESTIONS;
   const quickChatBusy = props.quickChatPending || submitPending;
   const suggestionActionBusy = pendingSuggestionAction !== null;
   const importStatusText = pendingImportAction === null
@@ -614,7 +604,7 @@ function ReadyEmptyHero(props: {
 
   const prefillSuggestion = useCallback((prompt: string, mode?: QuickChatMode) => {
     if (quickChatBusy || suggestionActionBusy) return;
-    const nextDraft = appendPromptContextDraft(draft, prompt);
+    const nextDraft = prompt;
     setDraft(nextDraft);
     setDraftMode(mode);
     window.requestAnimationFrame(() => {
@@ -623,7 +613,7 @@ function ReadyEmptyHero(props: {
       input.focus();
       input.setSelectionRange(nextDraft.length, nextDraft.length);
     });
-  }, [draft, quickChatBusy, suggestionActionBusy]);
+  }, [quickChatBusy, suggestionActionBusy]);
 
   const runSuggestionAction = useCallback(async (actionKey: string, action?: () => Promise<void> | void) => {
     if (!action || quickChatBusy || pendingSuggestionActionRef.current !== null) return;
@@ -672,16 +662,6 @@ function ReadyEmptyHero(props: {
       }
     }
   }, [appendImportedPrompt, quickChatBusy]);
-
-  const importTextFile = useCallback(async () => {
-    if (!props.onImportTextFile || quickChatBusy) return;
-    await runImportAction('file', props.onImportTextFile);
-  }, [props.onImportTextFile, quickChatBusy, runImportAction]);
-
-  const importFolderOutline = useCallback(async () => {
-    if (!props.onImportFolderOutline || quickChatBusy) return;
-    await runImportAction('folder', props.onImportFolderOutline);
-  }, [props.onImportFolderOutline, quickChatBusy, runImportAction]);
 
   const importActionBusy = pendingImportAction !== null;
 
@@ -759,133 +739,74 @@ function ReadyEmptyHero(props: {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <Textarea
-          ref={inputRef}
-          className="maka-onboarding-quickchat-input"
-          placeholder={copy.quickChatPlaceholder}
-          rows={3}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleKey}
-          onPaste={handlePaste}
-          disabled={quickChatBusy}
-          aria-label={copy.quickChatAria}
-        />
+        <div className="maka-onboarding-quickchat-field">
+          <Textarea
+            ref={inputRef}
+            className="maka-onboarding-quickchat-input"
+            placeholder={copy.quickChatPlaceholder}
+            rows={3}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={handleKey}
+            onPaste={handlePaste}
+            disabled={quickChatBusy}
+            aria-label={copy.quickChatAria}
+          />
+          <small
+            className="maka-onboarding-quickchat-example"
+            data-pending={importStatusText ? 'true' : undefined}
+            aria-hidden={importStatusText ? undefined : 'true'}
+            aria-live={importStatusText ? 'polite' : undefined}
+          >
+            {importStatusText ?? copy.quickChatExample}
+          </small>
+        </div>
         {dragActive && (
           <span className="maka-visually-hidden" role="status" aria-live="polite">
             松开以导入文件内容
           </span>
         )}
-        <small
-          className="maka-onboarding-quickchat-example"
-          data-pending={importStatusText ? 'true' : undefined}
-          aria-hidden={importStatusText ? undefined : 'true'}
-          aria-live={importStatusText ? 'polite' : undefined}
-        >
-          {importStatusText ?? copy.quickChatExample}
-        </small>
         {draftMode === 'deep_research' && (
           <span className="maka-onboarding-quickchat-mode">深度研究 · 只读分析</span>
         )}
-        <div className="maka-onboarding-quickchat-actions">
-          {props.onImportTextFile && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="maka-onboarding-quickchat-action"
-              onClick={() => void importTextFile()}
-              disabled={quickChatBusy || importActionBusy}
-              data-pending={pendingImportAction === 'file' ? 'true' : undefined}
-              aria-busy={pendingImportAction === 'file' ? 'true' : undefined}
-            >
-              <Paperclip size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span>{pendingImportAction === 'file' ? '导入中…' : '导入文件内容'}</span>
-            </Button>
-          )}
-          {props.onImportFolderOutline && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="maka-onboarding-quickchat-action"
-              onClick={() => void importFolderOutline()}
-              disabled={quickChatBusy || importActionBusy}
-              data-pending={pendingImportAction === 'folder' ? 'true' : undefined}
-              aria-busy={pendingImportAction === 'folder' ? 'true' : undefined}
-            >
-              <FolderOpen size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span>{pendingImportAction === 'folder' ? '导入中…' : '导入文件夹目录'}</span>
-            </Button>
-          )}
-          <Button
-            type="button"
-            className="maka-onboarding-quickchat-submit"
-            onClick={submit}
-            disabled={quickChatBusy}
-            aria-busy={quickChatBusy ? 'true' : undefined}
-          >
-            {quickChatBusy ? copy.submitPendingLabel : copy.submitIdleLabel}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          className="maka-onboarding-quickchat-submit"
+          onClick={submit}
+          disabled={quickChatBusy}
+          aria-busy={quickChatBusy ? 'true' : undefined}
+          aria-label={quickChatBusy ? copy.submitPendingLabel : copy.submitIdleLabel}
+          title={quickChatBusy ? copy.submitPendingLabel : copy.submitIdleLabel}
+        >
+          <ArrowUp size={18} strokeWidth={2.2} aria-hidden="true" />
+        </Button>
       </div>
 
-      {(visibleSuggestions.length > 0 || hiddenSuggestions.length > 0) && (
+      {visibleSuggestions.length > 0 && (
         <div className="maka-first-run-task-suggestions" aria-label="试试这些任务">
-          <div className="maka-first-run-task-suggestions-header">
-            <strong>试试这些任务</strong>
-            {hiddenSuggestions.length > 0 && (
-              <Button
-                type="button"
-                variant="quiet"
-                size="sm"
-                className="maka-first-run-task-suggestions-restore"
-                onClick={() => void runSuggestionAction(
-                  'restore',
-                  () => props.onRestoreTaskSuggestions?.(hiddenSuggestions.map((item) => item.id)),
-                )}
-                disabled={quickChatBusy || suggestionActionBusy || !props.onRestoreTaskSuggestions}
-                aria-busy={pendingSuggestionAction === 'restore' ? 'true' : undefined}
-              >
-                <RotateCcw size={12} strokeWidth={1.75} aria-hidden="true" />
-                <span>{pendingSuggestionAction === 'restore' ? '恢复中…' : `恢复 ${hiddenSuggestions.length} 项`}</span>
-              </Button>
-            )}
-          </div>
-          {visibleSuggestions.length > 0 && (
-            <div className="maka-first-run-task-suggestion-list">
-              {visibleSuggestions.map((suggestion) => (
-                <span key={suggestion.id} className="maka-first-run-task-suggestion-chip">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="maka-first-run-task-suggestion"
-                    onClick={() => prefillSuggestion(suggestion.prompt, suggestion.mode)}
-                    disabled={quickChatBusy || suggestionActionBusy}
-                  >
-                    {suggestion.label}
-                  </Button>
-                  {props.onDismissTaskSuggestion && (
+          <div className="maka-first-run-task-suggestions-inner">
+            <div className="maka-first-run-task-suggestions-header">
+              <strong>试试这些任务</strong>
+            </div>
+            {visibleSuggestions.length > 0 && (
+              <div className="maka-first-run-task-suggestion-list">
+                {visibleSuggestions.map((suggestion) => (
+                  <span key={suggestion.id} className="maka-first-run-task-suggestion-chip">
                     <Button
                       type="button"
-                      variant="quiet"
-                      size="icon-sm"
-                      className="maka-first-run-task-suggestion-dismiss"
-                      onClick={() => void runSuggestionAction(
-                        `dismiss:${suggestion.id}`,
-                        () => props.onDismissTaskSuggestion?.(suggestion.id),
-                      )}
+                      variant="ghost"
+                      size="sm"
+                      className="maka-first-run-task-suggestion"
+                      onClick={() => prefillSuggestion(suggestion.prompt, suggestion.mode)}
                       disabled={quickChatBusy || suggestionActionBusy}
-                      aria-busy={pendingSuggestionAction === `dismiss:${suggestion.id}` ? 'true' : undefined}
-                      aria-label={`隐藏任务建议：${suggestion.label}`}
-                      title="隐藏"
                     >
-                      <X size={12} strokeWidth={1.75} aria-hidden="true" />
+                      {suggestion.label}
                     </Button>
-                  )}
-                </span>
-              ))}
-            </div>
-          )}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </section>

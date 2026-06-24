@@ -497,6 +497,9 @@ export function SessionListPanel(props: {
     >
       <header className="maka-session-panel-header">
         <div className="maka-sidebar-drag-strip">
+          {!props.sidebarCollapsed && (
+            <span className="maka-sidebar-brand" aria-hidden="true">Maka</span>
+          )}
           {props.onOpenSearchModal && (
             <button
               className="maka-sidebar-search-button"

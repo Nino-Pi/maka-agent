@@ -2785,39 +2785,41 @@ function AppShell() {
         >
           {sessionListCollapsed && (
             <div className="maka-collapsed-drag-strip" aria-label="侧边栏已收起">
-              <UiButton
-                className="maka-collapsed-topbar-button"
-                variant="quiet"
-                size="icon-sm"
-                type="button"
-                onClick={() => setSessionListCollapsed(false)}
-                aria-label="展开侧边栏"
-                title="展开侧边栏"
-              >
-                <PanelLeftOpen size={16} strokeWidth={1.65} aria-hidden="true" />
-              </UiButton>
-              <UiButton
-                className="maka-collapsed-topbar-button"
-                variant="quiet"
-                size="icon-sm"
-                type="button"
-                onClick={() => setSearchModalOpen(true)}
-                aria-label="搜索对话"
-                title="搜索对话"
-              >
-                <Search size={16} strokeWidth={1.65} aria-hidden="true" />
-              </UiButton>
-              <UiButton
-                className="maka-collapsed-topbar-button"
-                variant="quiet"
-                size="icon-sm"
-                type="button"
-                onClick={createSession}
-                aria-label="新任务"
-                title="新任务"
-              >
-                <SquarePen size={16} strokeWidth={1.65} aria-hidden="true" />
-              </UiButton>
+              <div className="maka-collapsed-topbar-actions">
+                <UiButton
+                  className="maka-collapsed-topbar-button"
+                  variant="quiet"
+                  size="icon-sm"
+                  type="button"
+                  onClick={() => setSearchModalOpen(true)}
+                  aria-label="搜索对话"
+                  title="搜索对话"
+                >
+                  <Search size={16} strokeWidth={1.65} aria-hidden="true" />
+                </UiButton>
+                <UiButton
+                  className="maka-collapsed-topbar-button"
+                  variant="quiet"
+                  size="icon-sm"
+                  type="button"
+                  onClick={() => setSessionListCollapsed(false)}
+                  aria-label="展开侧边栏"
+                  title="展开侧边栏"
+                >
+                  <PanelLeftOpen size={16} strokeWidth={1.65} aria-hidden="true" />
+                </UiButton>
+                <UiButton
+                  className="maka-collapsed-topbar-button"
+                  variant="quiet"
+                  size="icon-sm"
+                  type="button"
+                  onClick={createSession}
+                  aria-label="新任务"
+                  title="新任务"
+                >
+                  <SquarePen size={16} strokeWidth={1.65} aria-hidden="true" />
+                </UiButton>
+              </div>
             </div>
           )}
           <div className="maka-workspace-top-actions" role="toolbar" aria-label="工作区辅助操作">
