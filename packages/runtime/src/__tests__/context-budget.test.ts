@@ -441,6 +441,138 @@ describe('context-budget synthesis cache', () => {
     assert.match(renderSynthesisCacheBlock(block), /artifact-alpha/);
   });
 
+  test('retains same-turn events not covered by a selected synthesis block', () => {
+    const serialized = serializeToolResultForArchive({ text: 'raw archived key-alpha payload' });
+    const events = [
+      textEvent('prompt-alpha', 'turn-alpha', 'please inspect key-alpha'),
+      toolCall('call-alpha', 'turn-alpha', 'tool-alpha'),
+      archivedResult('result-alpha', 'turn-alpha', 'tool-alpha', {
+        artifactId: 'artifact-alpha',
+        bodySha256: sha256(serialized),
+        originalEstimatedTokens: serialized.length,
+        originalBytes: utf8Bytes(serialized),
+      }),
+      toolCall('call-beta', 'turn-alpha', 'tool-beta'),
+      toolResult('result-beta', 'turn-alpha', 'tool-beta', { text: 'unrelated same-turn payload' }),
+      textEvent('recent', 'turn-recent', 'newer retained context'),
+    ];
+    const block = synthesisBlock({
+      queryKey: 'key-alpha',
+      turnId: 'turn-alpha',
+      runtimeEventId: 'result-alpha',
+      toolCallId: 'tool-alpha',
+      artifactId: 'artifact-alpha',
+      bodySha256: sha256(serialized),
+      originalEstimatedTokens: serialized.length,
+      originalBytes: utf8Bytes(serialized),
+    });
+
+    const result = selectSynthesisCacheForReplay(
+      events,
+      'Recover key-alpha',
+      { enabled: true, blocks: [block] },
+      { sessionId: 'session-1', charsPerToken: 1 },
+    );
+
+    assert.deepEqual(
+      result.events.map((event) => event.id),
+      ['prompt-alpha', 'synthesis-cache:synth-key-alpha', 'call-beta', 'result-beta', 'recent'],
+    );
+  });
+
+  test('inserts a selected synthesis block at the covered event position', () => {
+    const serialized = serializeToolResultForArchive({ text: 'raw archived key-alpha payload' });
+    const events = [
+      textEvent('before', 'turn-before', 'older retained context'),
+      toolCall('call-alpha', 'turn-alpha', 'tool-alpha'),
+      archivedResult('result-alpha', 'turn-alpha', 'tool-alpha', {
+        artifactId: 'artifact-alpha',
+        bodySha256: sha256(serialized),
+        originalEstimatedTokens: serialized.length,
+        originalBytes: utf8Bytes(serialized),
+      }),
+      textEvent('after', 'turn-after', 'newer retained context'),
+    ];
+    const block = synthesisBlock({
+      queryKey: 'key-alpha',
+      turnId: 'turn-alpha',
+      runtimeEventId: 'result-alpha',
+      toolCallId: 'tool-alpha',
+      artifactId: 'artifact-alpha',
+      bodySha256: sha256(serialized),
+      originalEstimatedTokens: serialized.length,
+      originalBytes: utf8Bytes(serialized),
+    });
+
+    const result = selectSynthesisCacheForReplay(
+      events,
+      'Recover key-alpha',
+      { enabled: true, blocks: [block] },
+      { sessionId: 'session-1', charsPerToken: 1 },
+    );
+
+    assert.deepEqual(
+      result.events.map((event) => event.id),
+      ['before', 'synthesis-cache:synth-key-alpha', 'after'],
+    );
+  });
+
+  test('inserts multiple selected synthesis blocks at their covered event positions', () => {
+    const alpha = serializeToolResultForArchive({ text: 'raw archived key-alpha payload' });
+    const beta = serializeToolResultForArchive({ text: 'raw archived key-beta payload' });
+    const events = [
+      textEvent('before', 'turn-before', 'older retained context'),
+      toolCall('call-alpha', 'turn-alpha', 'tool-alpha'),
+      archivedResult('result-alpha', 'turn-alpha', 'tool-alpha', {
+        artifactId: 'artifact-alpha',
+        bodySha256: sha256(alpha),
+        originalEstimatedTokens: alpha.length,
+        originalBytes: utf8Bytes(alpha),
+      }),
+      textEvent('middle', 'turn-middle', 'retained middle context'),
+      toolCall('call-beta', 'turn-beta', 'tool-beta'),
+      archivedResult('result-beta', 'turn-beta', 'tool-beta', {
+        artifactId: 'artifact-beta',
+        bodySha256: sha256(beta),
+        originalEstimatedTokens: beta.length,
+        originalBytes: utf8Bytes(beta),
+      }),
+      textEvent('after', 'turn-after', 'newer retained context'),
+    ];
+    const alphaBlock = synthesisBlock({
+      queryKey: 'key-alpha',
+      turnId: 'turn-alpha',
+      runtimeEventId: 'result-alpha',
+      toolCallId: 'tool-alpha',
+      artifactId: 'artifact-alpha',
+      bodySha256: sha256(alpha),
+      originalEstimatedTokens: alpha.length,
+      originalBytes: utf8Bytes(alpha),
+    });
+    const betaBlock = synthesisBlock({
+      queryKey: 'key-beta',
+      turnId: 'turn-beta',
+      runtimeEventId: 'result-beta',
+      toolCallId: 'tool-beta',
+      artifactId: 'artifact-beta',
+      bodySha256: sha256(beta),
+      originalEstimatedTokens: beta.length,
+      originalBytes: utf8Bytes(beta),
+    });
+
+    const result = selectSynthesisCacheForReplay(
+      events,
+      'Recover key-alpha and key-beta',
+      { enabled: true, blocks: [alphaBlock, betaBlock], maxBlocks: 2 },
+      { sessionId: 'session-1', charsPerToken: 1 },
+    );
+
+    assert.deepEqual(
+      result.events.map((event) => event.id),
+      ['before', 'synthesis-cache:synth-key-alpha', 'middle', 'synthesis-cache:synth-key-beta', 'after'],
+    );
+  });
+
   test('does not select synthesis when raw evidence is requested', () => {
     const serialized = serializeToolResultForArchive({ text: 'raw archived key-alpha payload' });
     const events = [
@@ -508,6 +640,34 @@ describe('context-budget synthesis cache', () => {
     assert.equal(result.selectedBlocks.length, 0);
     assert.deepEqual(result.diagnosticPatch.synthesisCacheSkippedReasonCounts, {
       coverage_miss: 1,
+    });
+  });
+
+  test('does not append synthesis when a source event is missing', () => {
+    const serialized = serializeToolResultForArchive({ text: 'raw archived key-alpha payload' });
+    const events = [textEvent('recent', 'turn-recent', 'newer retained context')];
+    const block = synthesisBlock({
+      queryKey: 'key-alpha',
+      turnId: 'turn-alpha',
+      runtimeEventId: 'result-alpha',
+      toolCallId: 'tool-alpha',
+      artifactId: 'artifact-alpha',
+      bodySha256: sha256(serialized),
+      originalEstimatedTokens: serialized.length,
+      originalBytes: utf8Bytes(serialized),
+    });
+
+    const result = selectSynthesisCacheForReplay(
+      events,
+      'Recover key-alpha',
+      { enabled: true, blocks: [block] },
+      { sessionId: 'session-1' },
+    );
+
+    assert.equal(result.selectedBlocks.length, 0);
+    assert.deepEqual(result.events.map((event) => event.id), ['recent']);
+    assert.deepEqual(result.diagnosticPatch.synthesisCacheInvalidationReasonCounts, {
+      source_missing: 1,
     });
   });
 
