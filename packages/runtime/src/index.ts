@@ -66,7 +66,54 @@ export type {
 } from './pi-agent-backend.js';
 
 export { buildBuiltinTools } from './builtin-tools.js';
-export type { MakaTool as BuiltinMakaTool, MakaToolContext as BuiltinMakaToolContext } from './builtin-tools.js';
+export type {
+  BuildBuiltinToolsOptions,
+  MakaTool as BuiltinMakaTool,
+  MakaToolContext as BuiltinMakaToolContext,
+} from './builtin-tools.js';
+export {
+  LOCAL_WORKSPACE_EXECUTOR_FACTS,
+  LocalWorkspaceExecutor,
+  createLocalWorkspaceExecutor,
+} from './workspace-executor.js';
+export type {
+  WorkspaceExecInput,
+  WorkspaceExecResult,
+  WorkspaceBashExecutor,
+  WorkspaceCommandExecutor,
+  WorkspaceEditExecutor,
+  WorkspaceExistingPathResolver,
+  WorkspaceExecutor,
+  WorkspaceExecutorFacts,
+  WorkspaceExecutorFactsProvider,
+  WorkspaceGlobExecutor,
+  WorkspaceGlobFilesExecutor,
+  WorkspaceGlobInput,
+  WorkspaceGlobResult,
+  WorkspaceGrepExecutor,
+  WorkspaceGrepFilesExecutor,
+  WorkspaceGrepInput,
+  WorkspaceGrepResult,
+  WorkspaceIsolationKind,
+  WorkspaceNetworkMode,
+  WorkspaceReadExecutor,
+  WorkspaceReadFileInput,
+  WorkspaceReadFileExecutor,
+  WorkspaceReadFileResult,
+  WorkspaceResolvePathInput,
+  WorkspaceResolvePathResult,
+  WorkspaceSecretMode,
+  WorkspaceSearchExecutor,
+  WorkspaceWritablePathResolver,
+  WorkspaceWriteExecutor,
+  WorkspaceWriteBackMode,
+  WorkspaceWriteFileInput,
+  WorkspaceWriteFileExecutor,
+  WorkspaceWriteFileResult,
+  WorkspaceWriteLockKeyInput,
+  WorkspaceWriteLockProvider,
+  WorkspaceWriteLockKeyResult,
+} from './workspace-executor.js';
 export { computeEditedSource, COMPUTE_EDITED_SOURCE_FN_SOURCE } from './edit-replace.js';
 export type { EditMatch, EditMatchStrategy } from './edit-replace.js';
 export { truncateToolOutput } from './tool-output.js';
