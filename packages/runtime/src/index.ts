@@ -38,6 +38,7 @@ export type {
   BackendCompactHistoryResult,
   AiSdkBackendInput,
   AppendMessageFn,
+  AttachmentByteReader,
   MakaTool,
   MakaToolContext,
   ModelFactory,

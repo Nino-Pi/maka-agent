@@ -31,6 +31,7 @@ export type {
   AbortEvent,
   StorageRef,
   AttachmentRef,
+  AttachmentIngestItem,
 } from './events.js';
 export {
   TOOL_OUTPUT_DELTA_MAX_CHARS,
@@ -721,6 +722,9 @@ export {
   validateChatDefaultModel,
 } from './model-catalog.js';
 
+// model-metadata.ts
+export { resolveModelVisionSupport } from './model-metadata.js';
+
 // settings.ts
 export type {
   AppearanceSettings,
@@ -942,3 +946,6 @@ export {
   isQuickChatMode,
   normalizeQuickChatMode,
 } from './explore-agent.js';
+
+// attachments.ts
+export { attachmentKindFromMimeType, guessMimeFromName, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_COUNT } from './attachments.js';
