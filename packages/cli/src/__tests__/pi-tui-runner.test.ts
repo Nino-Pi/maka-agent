@@ -1751,9 +1751,12 @@ class ToolOutputDriver implements MakaSessionDriver {
         kind: 'terminal',
         cwd: '/repo',
         cmd: 'npm test',
+        status: 'completed',
         exitCode: 0,
         stdout: `${'x'.repeat(900)}\nexpanded-tail`,
         stderr: '',
+        stdoutTruncated: false,
+        stderrTruncated: false,
       },
     };
     yield {
@@ -2128,4 +2131,3 @@ function storedAssistantMessage(id: string, turnId: string, text: string): Store
     modelId: 'claude-sonnet-4-5',
   };
 }
-
