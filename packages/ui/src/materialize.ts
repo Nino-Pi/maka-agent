@@ -1,6 +1,8 @@
-import { deriveTurnRecords } from '@maka/core';
-import type { AttachmentRef, StoredMessage, ToolResultContent, TurnRecord, TurnStatus } from '@maka/core';
+import { deriveTurnRecords, toolResultActivityStatus } from '@maka/core';
+import type { AttachmentRef, StoredMessage, ToolActivityKind, ToolResultContent, TurnRecord, TurnStatus } from '@maka/core';
 import type { LiveTurnProjection } from './live-turn-projection.js';
+
+export { isCancelledToolResultContent, toolResultActivityStatus } from '@maka/core';
 
 export interface ChatItem {
   id: string;
@@ -32,6 +34,7 @@ export interface ToolOutputChunk {
 export interface ToolActivityItem {
   toolUseId: string;
   toolName: string;
+  activityKind?: ToolActivityKind;
   displayName?: string;
   intent?: string;
   /**
@@ -120,6 +123,7 @@ export function materializeTools(messages: StoredMessage[]): ToolActivityItem[] 
       return {
         toolUseId: call.id,
         toolName: call.toolName,
+        activityKind: call.activityKind,
         displayName: call.displayName,
         intent: call.intent,
         ...(call.stepId !== undefined ? { stepId: call.stepId } : {}),
@@ -134,11 +138,7 @@ export function materializeTools(messages: StoredMessage[]): ToolActivityItem[] 
 function materializeToolResultStatus(
   result: Extract<StoredMessage, { type: 'tool_result' }>,
 ): ToolActivityItem['status'] {
-  if (!result.isError) return 'completed';
-  if (result.content.kind === 'explore_agent' && result.content.reason === 'aborted') {
-    return 'interrupted';
-  }
-  return 'errored';
+  return toolResultActivityStatus(result.isError, result.content);
 }
 
 /**

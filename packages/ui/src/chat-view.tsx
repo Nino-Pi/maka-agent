@@ -332,8 +332,18 @@ export function ChatView(props: {
   // the non-actionable placeholder and the indicator injects into the tail turn
   // (not the fallback section) — it is, by derivation, only ever true when text /
   // thinking / tools are all absent.
-  const streamingActive = !!(props.liveTurn || props.processingIndicator || props.continuingIndicator);
-  const tailTurnId = props.liveTurn?.turnId ?? (streamingActive ? turns[turns.length - 1]?.turnId : undefined);
+  //
+  // Terminal liveTurn is evidence overlay only (e.g. empty shell_run still needs
+  // pre-yield chunks). It must NOT block footer actions — keeping evidence and
+  // being in-flight are separate signals. Wait indicators alone still mark
+  // streaming, but delayed flags can lag one frame past complete; terminal
+  // evidence must outrank them so copy/regenerate stay actionable.
+  const liveInFlight = !!(props.liveTurn && !props.liveTurn.terminal);
+  const waitIndicators = !!(props.processingIndicator || props.continuingIndicator);
+  const streamingActive = liveInFlight || (!props.liveTurn?.terminal && waitIndicators);
+  const tailTurnId = liveInFlight
+    ? props.liveTurn!.turnId
+    : (streamingActive ? turns[turns.length - 1]?.turnId : undefined);
   // One rail tick per turn that carries a user prompt (Codex-style prompt
   // navigation). Memoized so the rail's IntersectionObserver isn't rebuilt
   // on every render.
@@ -1668,7 +1678,7 @@ function DeepThinking(props: { text: string; live: boolean; truncated?: boolean 
           {props.live ? (
             <pre
               ref={bodyRef}
-              className="m-0 max-h-64 overflow-y-auto whitespace-pre-wrap [word-break:break-word] [font-family:inherit] text-[length:var(--font-size-caption)] leading-normal text-[color:var(--muted-foreground)] [scroll-behavior:auto]"
+              className="m-0 max-h-64 overflow-y-auto whitespace-pre-wrap [word-break:break-word] [font-family:inherit] text-[length:var(--font-size-base)] leading-normal text-[color:var(--muted-foreground)] [scroll-behavior:auto]"
             >
               <DeepThinkingBody text={displayed} streamFade={streamFade} />
             </pre>
@@ -1677,8 +1687,9 @@ function DeepThinking(props: { text: string; live: boolean; truncated?: boolean 
               {/* Same `max-h-64 overflow-y-auto` bound as the live `<pre>` above
                   so an expanded panel doesn't jump taller the frame thinking
                   settles (live→settled swaps this body in place). Long reasoning
-                  stays a compact scroll box in both states. */}
-              <div className="max-h-64 overflow-y-auto whitespace-pre-wrap [word-break:break-word] text-[length:var(--font-size-caption)] leading-normal text-[color:var(--muted-foreground)]">
+                  stays a compact scroll box in both states. Body uses base 13px
+                  so tool output and thinking share one reading size. */}
+              <div className="max-h-64 overflow-y-auto whitespace-pre-wrap [word-break:break-word] text-[length:var(--font-size-base)] leading-normal text-[color:var(--muted-foreground)]">
                 {props.text}
               </div>
               <div className="absolute right-0 top-0 opacity-0 [transition:opacity_var(--duration-quick)_var(--ease-out-strong)] group-hover/reasoning:opacity-100 focus-within:opacity-100">

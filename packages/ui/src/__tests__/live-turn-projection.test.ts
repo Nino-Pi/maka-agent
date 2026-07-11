@@ -64,6 +64,7 @@ describe('applyLiveTurnEvent', () => {
       stepId: 'step-1',
       toolUseId: 'tool-1',
       toolName: 'Task List',
+      activityKind: 'command',
       args: {},
       ts: 101,
     });
@@ -72,6 +73,7 @@ describe('applyLiveTurnEvent', () => {
     assert.deepEqual(projection.steps[0]?.tools, [{
       toolUseId: 'tool-1',
       toolName: 'Task List',
+      activityKind: 'command',
       stepId: 'step-1',
       status: 'pending',
       args: {},
@@ -187,6 +189,40 @@ describe('applyLiveTurnEvent', () => {
       result: { kind: 'text', text: 'ok' },
       durationMs: 12,
     });
+  });
+
+  it('maps cancelled terminal tool_result to interrupted, not errored', () => {
+    const started = applyLiveTurnEvent(undefined, {
+      type: 'tool_start',
+      id: 'event-1',
+      turnId: 'turn-1',
+      stepId: 'step-1',
+      toolUseId: 'tool-1',
+      toolName: 'Bash',
+      args: { command: 'sleep 99' },
+      ts: 100,
+    });
+    const projection = applyLiveTurnEvent(started, {
+      type: 'tool_result',
+      id: 'event-2',
+      turnId: 'turn-1',
+      toolUseId: 'tool-1',
+      isError: true,
+      content: {
+        kind: 'terminal',
+        cwd: '/repo',
+        cmd: 'sleep 99',
+        status: 'cancelled',
+        exitCode: 130,
+        stdout: '',
+        stderr: '',
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      },
+      ts: 101,
+    });
+
+    assert.equal(projection.steps[0]?.tools[0]?.status, 'interrupted');
   });
 
   it('appends streamed tool output to the existing tool without changing its step', () => {
@@ -429,6 +465,53 @@ describe('settleLiveTurnStep', () => {
       { turnId: 'turn-1', phase: 'streamed', steps: [] },
     );
   });
+
+  it('keeps co-located tool stream evidence when text handoff settles', () => {
+    const projection: LiveTurnProjection = {
+      turnId: 'turn-1',
+      phase: 'streamed',
+      terminal: true,
+      steps: [{
+        stepId: 'step-1',
+        text: { text: 'done', truncated: false, complete: true },
+        tools: [{
+          toolUseId: 'tool-1',
+          toolName: 'Bash',
+          status: 'completed',
+          args: { command: 'npm test' },
+          outputChunks: [
+            { seq: 0, stream: 'stdout', text: 'starting-live-output\n', redacted: true, createdAt: 1 },
+          ],
+          outputTruncated: true,
+        }],
+      }],
+    };
+
+    const settled = settleLiveTurnStep(projection, 'step-1');
+    assert.ok(settled);
+    assert.equal(settled!.steps.length, 1);
+    assert.equal(settled!.steps[0]!.text, undefined);
+    assert.equal(settled!.steps[0]!.tools[0]!.outputChunks?.[0]?.text, 'starting-live-output\n');
+  });
+
+  it('still drops tools without live stream evidence on text settle', () => {
+    const projection: LiveTurnProjection = {
+      turnId: 'turn-1',
+      phase: 'streamed',
+      terminal: true,
+      steps: [{
+        stepId: 'step-1',
+        text: { text: 'done', truncated: false, complete: true },
+        tools: [{
+          toolUseId: 'tool-1',
+          toolName: 'Bash',
+          status: 'interrupted',
+          args: {},
+        }],
+      }],
+    };
+    assert.equal(settleLiveTurnStep(projection, 'step-1'), undefined);
+  });
 });
 
 describe('reconcileTerminalLiveTurn', () => {
@@ -470,6 +553,64 @@ describe('reconcileTerminalLiveTurn', () => {
     ];
 
     assert.equal(reconcileTerminalLiveTurn(withOutput, toolCallOnly), withOutput);
+  });
+
+  it('keeps live stream evidence when persisted shell_run streams are still empty', () => {
+    const withOutput: LiveTurnProjection = {
+      ...toolOnly,
+      steps: [{
+        ...toolOnly.steps[0]!,
+        tools: [{
+          ...toolOnly.steps[0]!.tools[0]!,
+          status: 'completed',
+          outputChunks: [
+            { seq: 0, stream: 'stdout', text: 'starting-live-output\n', redacted: true, createdAt: 1 },
+          ],
+          outputTruncated: true,
+        }],
+      }],
+    };
+    const emptyContent = {
+      kind: 'shell_run' as const,
+      ref: 'maka://runtime/background-tasks/bg',
+      status: 'running' as const,
+      cwd: '/repo',
+      cmd: 'npm test',
+      startedAt: 1,
+      updatedAt: 2,
+      stdout: '',
+      stderr: '',
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    };
+    const emptyShellRun = [
+      { type: 'tool_call' as const, id: 'tool-1', turnId: 'turn-1', stepId: 'step-1', ts: 1, toolName: 'Bash', args: {} },
+      {
+        type: 'tool_result' as const,
+        id: 'result-1',
+        turnId: 'turn-1',
+        ts: 2,
+        toolUseId: 'tool-1',
+        isError: false,
+        content: emptyContent,
+      },
+    ];
+
+    assert.equal(reconcileTerminalLiveTurn(withOutput, emptyShellRun), withOutput);
+
+    const filled = [
+      emptyShellRun[0]!,
+      {
+        type: 'tool_result' as const,
+        id: 'result-1',
+        turnId: 'turn-1',
+        ts: 2,
+        toolUseId: 'tool-1',
+        isError: false,
+        content: { ...emptyContent, stdout: 'starting-live-output\n' },
+      },
+    ];
+    assert.equal(reconcileTerminalLiveTurn(withOutput, filled), undefined);
   });
 
   it('leaves text steps to the smoother handoff', () => {

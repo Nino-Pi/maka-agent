@@ -1,5 +1,6 @@
 import type { SessionEvent, StoredMessage } from '@maka/core';
 import { applyAssistantComplete, applyAssistantDelta } from './assistant-stream.js';
+import { toolResultActivityStatus } from '@maka/core';
 import type { ToolActivityItem } from './materialize.js';
 import { applyThinkingComplete, applyThinkingDelta } from './thinking-stream.js';
 import { applyToolOutputChunk } from './tool-output-stream.js';
@@ -170,6 +171,7 @@ export function applyLiveTurnEvent(
     const startedTool: ToolActivityItem = {
       toolUseId: event.toolUseId,
       toolName: event.toolName,
+      ...(event.activityKind !== undefined ? { activityKind: event.activityKind } : {}),
       ...(event.displayName !== undefined ? { displayName: event.displayName } : {}),
       ...(event.intent !== undefined ? { intent: event.intent } : {}),
       ...(event.stepId !== undefined ? { stepId: event.stepId } : {}),
@@ -218,7 +220,7 @@ export function applyLiveTurnEvent(
       : { toolUseId: event.toolUseId, toolName: 'Tool', status: 'pending', args: undefined };
     const tool: ToolActivityItem = {
       ...base,
-      status: event.isError ? 'errored' : 'completed',
+      status: toolResultActivityStatus(event.isError, event.content),
       result: event.content,
       ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
     };
@@ -290,14 +292,59 @@ export function applyLiveTurnEvent(
   return { ...prior, phase: 'streamed', steps };
 }
 
+/**
+ * Text smoother handoff: drop the committed text/thinking slots for `stepId`.
+ * Tools that still carry live stream evidence (outputChunks) stay — empty
+ * shell_run durable results do not cover them, and co-located Bash+answer
+ * steps must not lose pre-yield output when the answer settles.
+ */
 export function settleLiveTurnStep(
   current: LiveTurnProjection,
   stepId: string,
 ): LiveTurnProjection | undefined {
-  const steps = current.steps.filter((step) => step.stepId !== stepId);
-  if (steps.length === current.steps.length) return current;
+  const stepIndex = current.steps.findIndex((step) => step.stepId === stepId);
+  if (stepIndex < 0) return current;
+  const step = current.steps[stepIndex]!;
+  const retainedTools = step.tools.filter((tool) => (tool.outputChunks?.length ?? 0) > 0);
+  const steps = retainedTools.length > 0
+    ? current.steps.map((candidate, index) => (
+      index === stepIndex
+        ? {
+            stepId: candidate.stepId,
+            tools: retainedTools,
+            contentOrder: ['tools' as const],
+          }
+        : candidate
+    ))
+    : current.steps.filter((candidate) => candidate.stepId !== stepId);
+  if (steps.length === current.steps.length && retainedTools.length === 0) return current;
   if (steps.length === 0 && current.terminal) return undefined;
   return { ...current, steps };
+}
+
+/**
+ * True when a persisted tool_result can replace live stream evidence for the
+ * same toolUseId. Empty shell_run/terminal bodies do not cover live chunks —
+ * background Bash yields an empty shell_run while live output is the only
+ * evidence the user already saw.
+ */
+function durableStreamEvidence(
+  messages: readonly StoredMessage[],
+  toolUseId: string,
+): boolean {
+  for (const message of messages) {
+    if (message.type !== 'tool_result' || message.toolUseId !== toolUseId) continue;
+    const content = message.content;
+    if (!content || typeof content !== 'object') return true;
+    if (content.kind === 'terminal' || content.kind === 'shell_run') {
+      return (content.stdout?.length ?? 0) > 0
+        || (content.stderr?.length ?? 0) > 0
+        || content.stdoutTruncated === true
+        || content.stderrTruncated === true;
+    }
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -319,8 +366,13 @@ export function reconcileTerminalLiveTurn(
     if (step.thinking && !assistantIds.has(step.stepId)) return true;
     const toolsCovered = step.tools.every((tool) => {
       if (!toolCallIds.has(tool.toolUseId)) return false;
-      if (tool.outputChunks?.length && !toolResultIds.has(tool.toolUseId)) return false;
-      return tool.status === 'interrupted' || toolResultIds.has(tool.toolUseId);
+      const hasResult = toolResultIds.has(tool.toolUseId);
+      // Live stream evidence only hands off when durable result has streams/meta.
+      if (tool.outputChunks?.length) {
+        if (!hasResult) return false;
+        if (!durableStreamEvidence(turnMessages, tool.toolUseId)) return false;
+      }
+      return tool.status === 'interrupted' || hasResult;
     });
     return !toolsCovered;
   });
