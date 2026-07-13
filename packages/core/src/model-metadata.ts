@@ -118,6 +118,19 @@ const STATIC_MODEL_METADATA: Partial<Record<ProviderType, Record<string, ModelMe
   'tencent-coding-plan': {
     'kimi-k2.5': { capabilities: { vision: false } },
   },
+  'volcengine-ark': {
+    'doubao-seed-2-0-pro-260215': {
+      displayName: 'Doubao Seed 2.0 Pro',
+      lifecycle: 'active',
+      docsUrl: 'https://www.volcengine.com/docs/82379',
+      capabilities: { reasoning: true, functionCalling: true },
+      thinkingOptions: {
+        efforts: ['minimal', 'low', 'medium', 'high'],
+        toggle: true,
+        offBehavior: 'volcengine-thinking-disabled',
+      },
+    },
+  },
   deepseek: {
     'deepseek-v4-flash': { thinkingOptions: { efforts: ['high', 'max'], toggle: true } },
   },
