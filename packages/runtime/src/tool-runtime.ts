@@ -1,3 +1,4 @@
+import { projectToolActivityArgs } from '@maka/core';
 import type {
   SessionEvent,
   ToolActivityKind,
@@ -543,7 +544,7 @@ export class ToolRuntime {
           modelId: this.input.modelId,
           durationMs,
           status: toolResultStatus,
-          argsSummary: summarizeArgs(args),
+          argsSummary: summarizeArgs(tool.name, args),
           bytesIn: byteLength(args),
           bytesOut: byteLength(result),
           startedAt,
@@ -619,7 +620,7 @@ export class ToolRuntime {
           durationMs,
           status: 'error',
           errorClass: classifyError(err),
-          argsSummary: summarizeArgs(args),
+          argsSummary: summarizeArgs(tool.name, args),
           bytesIn: byteLength(args),
           bytesOut: byteLength(terminalFailure.content),
           startedAt,
@@ -645,7 +646,7 @@ export class ToolRuntime {
         durationMs: Math.max(0, this.input.now() - startedAt),
         status: 'error',
         errorClass: classifyError(err),
-        argsSummary: summarizeArgs(args),
+        argsSummary: summarizeArgs(tool.name, args),
         bytesIn: byteLength(args),
         bytesOut: 0,
         startedAt,
@@ -847,10 +848,14 @@ function coerceTerminalFailure(
       cmd: redactSecrets(command),
       status: error.code === 124 ? 'timed_out' : error.code === 130 ? 'cancelled' : 'failed',
       exitCode: error.code,
-      stdout,
-      stderr,
-      stdoutTruncated: error.stdoutTruncated === true,
-      stderrTruncated: error.stderrTruncated === true,
+      output: {
+        mode: 'pipes',
+        stdout,
+        stderr,
+        stdoutTruncated: error.stdoutTruncated === true,
+        stderrTruncated: error.stderrTruncated === true,
+        redacted: stdout !== String(error.stdout ?? '') || stderr !== String(error.stderr ?? ''),
+      },
     },
     // The in-turn result the model acts on is just this message (the structured
     // content above goes to session history). Without the actual output the
@@ -893,15 +898,21 @@ function deriveToolResultStatus(content: ToolResultContent): ToolInvocationRecor
     if (content.status === 'cancelled') return 'aborted';
     return 'error';
   }
+  if (
+    content.kind === 'shell_run'
+    && content.operation?.kind === 'pty_control'
+    && content.operation.failed
+  ) return 'error';
   // All other structured results are successful tool executions. That includes
   // ShellRun observations: their embedded process status stays model-visible,
   // but reading or returning the observation itself succeeded.
   return 'success';
 }
 
-function summarizeArgs(args: unknown): string {
-  const raw = typeof args === 'string' ? args : JSON.stringify(args ?? null);
-  const text = redactSecrets(raw);
+function summarizeArgs(toolName: string, args: unknown): string {
+  const projected = projectToolActivityArgs(toolName, args);
+  const raw = typeof projected === 'string' ? projected : JSON.stringify(projected ?? null);
+  const text = toolName === 'WriteStdin' ? raw : redactSecrets(raw);
   return text.length <= 512 ? text : `${text.slice(0, 511)}…`;
 }
 

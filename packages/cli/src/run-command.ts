@@ -395,8 +395,8 @@ function makaRunHelpText(): string {
     '  --timeout <seconds>       Invocation timeout',
     '  --max-steps <count>       Tool-step cap',
     '  --permission-mode <mode>  explore|execute|bypass (default: explore)',
-    '  --allow <rule>            Repeatable category:<name> or Bash(<exact command>)',
-    '  --deny <rule>             Repeatable category:<name> or Bash(<exact command>)',
+    '  --allow <rule>            Repeatable category:<name>, tool:<name>, or Bash(<exact command>)',
+    '  --deny <rule>             Repeatable category:<name>, tool:<name>, or Bash(<exact command>)',
     '  --resume <session-id>     Continue an explicit compatible session',
     '  --continue                Continue the latest compatible session for cwd',
     '  -h, --help                Show help',
@@ -414,6 +414,13 @@ function parseToolPermissionRule(
     }
     return { ok: true, value: { effect, kind: 'category', category } };
   }
+  if (input.startsWith('tool:')) {
+    const toolName = input.slice('tool:'.length);
+    if (toolName.length === 0 || toolName.trim() !== toolName) {
+      return { ok: false, message: `invalid --${effect} tool rule: ${input}` };
+    }
+    return { ok: true, value: { effect, kind: 'tool', toolName } };
+  }
   if (input.startsWith('Bash(') && input.endsWith(')')) {
     const command = input.slice('Bash('.length, -1);
     if (command.length === 0) {
@@ -423,7 +430,7 @@ function parseToolPermissionRule(
   }
   return {
     ok: false,
-    message: `invalid --${effect} rule: expected category:<name> or Bash(<exact command>)`,
+    message: `invalid --${effect} rule: expected category:<name>, tool:<name>, or Bash(<exact command>)`,
   };
 }
 

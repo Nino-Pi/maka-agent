@@ -237,30 +237,41 @@ describe('Maka CLI runtime bootstrap', () => {
             abortSignal: new AbortController().signal,
             emitOutput: () => {},
           },
-        ) as { kind: string; ref?: string; status?: string; stdout?: string };
+        ) as {
+          kind: string;
+          ref?: string;
+          status?: string;
+          output?: { mode: string; stdout?: string };
+        };
 
         assert.equal(result.kind, 'shell_run');
         assert.equal(result.status, 'running');
-        assert.equal(result.stdout, '');
+        assert.equal(result.output, undefined);
         assert.ok(result.ref);
         if (!result.ref) throw new Error('expected background task resource ref');
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        const detail = await read.impl(
-          { path: result.ref },
-          {
-            sessionId: 'session-1',
-            runId: 'run-1',
-            turnId: 'turn-1',
-            cwd: workspaceRoot,
-            toolCallId: 'tool-2',
-            abortSignal: new AbortController().signal,
-            emitOutput: () => {},
-          },
-        ) as { kind?: string; status?: string; stdout?: string };
+        const detail = await waitFor(async () => {
+          const snapshot = await read.impl(
+            { ref: result.ref },
+            {
+              sessionId: 'session-1',
+              runId: 'run-1',
+              turnId: 'turn-1',
+              cwd: workspaceRoot,
+              toolCallId: 'tool-2',
+              abortSignal: new AbortController().signal,
+              emitOutput: () => {},
+            },
+          ) as {
+            kind?: string;
+            status?: string;
+            output?: { mode: string; stdout?: string };
+          };
+          return snapshot.output?.stdout === 'start' ? snapshot : undefined;
+        });
         assert.equal(detail.kind, 'shell_run');
         assert.equal(detail.status, 'running');
-        assert.equal(detail.stdout, 'start');
+        assert.equal(detail.output?.mode, 'pipes');
+        assert.equal(detail.output?.stdout, 'start');
 
         await context.close();
         const record = await createShellRunStore(workspaceRoot).readShellRun('session-1', backgroundTaskId(result.ref));
@@ -296,10 +307,12 @@ describe('Maka CLI runtime bootstrap', () => {
         assert.equal(result.kind, 'shell_run');
         assert.equal(result.status, 'running');
 
-        await new Promise((resolve) => setTimeout(resolve, 650));
-        const terminal = updates.find((update) => update.result.status === 'completed');
-        assert.equal(terminal?.sourceToolCallId, 'tool-1');
-        assert.equal(terminal?.result.stdout, 'startdone');
+        const terminal = await waitFor(() => updates.find((update) => update.result.status === 'completed'));
+        assert.equal(terminal.sourceToolCallId, 'tool-1');
+        assert.equal(
+          terminal.result.output?.mode === 'pipes' ? terminal.result.output.stdout : '',
+          'startdone',
+        );
       } finally {
         unsubscribe();
         await context.close();
@@ -307,7 +320,7 @@ describe('Maka CLI runtime bootstrap', () => {
     });
   });
 
-  test('resolves an inherited ShellRun through branch session lineage', async () => {
+  test('exposes canonical ShellRun updates through the runtime context', async () => {
     await withWorkspace(async (workspaceRoot) => {
       const connectionStore = createConnectionStore(workspaceRoot);
       await connectionStore.create({
@@ -318,12 +331,6 @@ describe('Maka CLI runtime bootstrap', () => {
         const parent = await context.runtime.createSession({
           cwd: workspaceRoot, backend: 'ai-sdk', llmConnectionSlug: 'local',
           model: 'llama3.2', permissionMode: 'bypass', name: 'parent',
-        });
-        const runtimeDeps = (context.runtime as unknown as RuntimeWithPrivateDeps).deps;
-        const branch = await runtimeDeps.store.create({
-          cwd: workspaceRoot, backend: 'ai-sdk', llmConnectionSlug: 'local',
-          model: 'llama3.2', permissionMode: 'bypass', name: 'branch',
-          parentSessionId: parent.id,
         });
         const bash = context.tools.find((tool) => tool.name === 'Bash');
         assert.ok(bash);
@@ -339,9 +346,10 @@ describe('Maka CLI runtime bootstrap', () => {
         assert.equal(started.status, 'running');
         assert.ok(started.ref);
 
-        const inherited = await context.readShellRun(branch.id, started.ref);
-        assert.equal(inherited.ownerSessionId, parent.id);
-        assert.equal(inherited.result.status, 'running');
+        const updates = await context.listShellRunUpdates(parent.id);
+        const update = updates.find((candidate) => candidate.result.ref === started.ref);
+        assert.deepEqual(update?.ownership, { kind: 'local' });
+        assert.equal(update?.result.status, 'running');
       } finally {
         await context.close();
       }
@@ -370,8 +378,11 @@ describe('Maka CLI runtime bootstrap', () => {
         assert.equal(started.status, 'running');
         assert.ok(started.ref);
 
-        await new Promise((resolve) => setTimeout(resolve, 650));
-        const hydrated = await context.readShellRun('session-1', started.ref);
+        const hydrated = await waitFor(async () => {
+          const updates = await context.listShellRunUpdates('session-1');
+          const snapshot = updates.find((candidate) => candidate.result.ref === started.ref);
+          return snapshot?.result.status === 'completed' ? snapshot : undefined;
+        });
         assert.equal(hydrated.result.status, 'completed');
         const stored = await createShellRunStore(workspaceRoot).readShellRun(
           'session-1',
@@ -557,6 +568,16 @@ async function withWorkspace(fn: (workspaceRoot: string) => Promise<void>): Prom
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }
+}
+
+async function waitFor<T>(read: () => T | undefined | Promise<T | undefined>): Promise<T> {
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    const value = await read();
+    if (value !== undefined) return value;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error('Timed out waiting for ShellRun state');
 }
 
 function backgroundTaskId(ref: string): string {

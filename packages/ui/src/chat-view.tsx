@@ -11,9 +11,9 @@ import { DeepResearchEmptyHero, EmptyChatHero } from './chat-empty-hero.js';
 import type { ChatModelChoice } from './chat-model-helpers.js';
 import { OverlayScrollArea } from './overlay-scroll-area.js';
 import { PromptAnchorRail } from './prompt-anchor-rail.js';
-import type { ProviderType, SessionSummary, StoredMessage } from '@maka/core';
+import type { ProviderType, SessionSummary, ShellRunUpdate, StoredMessage } from '@maka/core';
 import { isDeepResearchSession } from '@maka/core';
-import { materializeChat, materializeTurns, overlayLiveTurn } from './materialize.js';
+import { materializeChat, materializeTurns, overlayLiveTurn, overlayShellRunUpdates } from './materialize.js';
 import type { LiveTurnProjection } from './live-turn-projection.js';
 import { Button as UiButton } from './ui.js';
 import { Alert, AlertDescription } from './primitives/alert.js';
@@ -79,6 +79,7 @@ export function ChatView(props: {
   messages: StoredMessage[];
   messageLoading?: boolean;
   liveTurn?: LiveTurnProjection;
+  shellRunUpdates?: readonly ShellRunUpdate[];
   /** Called once the streaming bubble has displayed the final text and can hand off to history. */
   onStreamingSettled?(messageId?: string): void;
   /**
@@ -241,9 +242,13 @@ export function ChatView(props: {
     () => materializeTurns(visibleMessages),
     [visibleMessages],
   );
-  const turns = useMemo(
+  const liveTurns = useMemo(
     () => overlayLiveTurn(settledTurns, props.liveTurn),
     [settledTurns, props.liveTurn],
+  );
+  const turns = useMemo(
+    () => overlayShellRunUpdates(liveTurns, props.shellRunUpdates ?? []),
+    [liveTurns, props.shellRunUpdates],
   );
   // #642 single render path: the in-flight answer is injected into the tail
   // turn's TurnView (the SAME node as the eventual committed turn) instead of a
@@ -267,7 +272,7 @@ export function ChatView(props: {
   // thinking / tools are all absent.
   //
   // Terminal liveTurn is evidence overlay only (e.g. empty shell_run still needs
-  // pre-yield chunks). It must NOT block footer actions — keeping evidence and
+  // pre-handoff chunks). It must NOT block footer actions — keeping evidence and
   // being in-flight are separate signals. Wait indicators alone still mark
   // streaming, but delayed flags can lag one frame past complete; terminal
   // evidence must outrank them so copy/regenerate stay actionable.

@@ -75,32 +75,44 @@ export {
   buildForegroundBashTool,
   buildLocalForegroundBashTool,
   buildStopBackgroundTaskTool,
+  buildWriteStdinTool,
   shapeTerminalResult,
 } from './shell-tools.js';
 export type {
   BuildForegroundBashToolOptions,
   ForegroundBashExecuteInput,
   ForegroundBashResult,
-  ShellRunToolController,
+  ShellRunLauncher,
 } from './shell-tools.js';
 export {
   DEFAULT_BASH_TIMEOUT_MS,
   DEFAULT_MAX_LIVE_SHELL_RUNS,
+  DEFAULT_MAX_LIVE_PTY_RUNS,
   DEFAULT_SHELL_RUN_FLUSH_BYTES,
   DEFAULT_SHELL_RUN_FLUSH_INTERVAL_MS,
   MAX_FOREGROUND_BASH_TIMEOUT_MS,
+  MAX_PTY_COLS,
+  MAX_PTY_ROWS,
   MAX_SHELL_RUN_TIMEOUT_MS,
+  MAX_WRITE_STDIN_INPUT_BYTES,
+  MIN_PTY_COLS,
+  MIN_PTY_ROWS,
   SHELL_RUN_CONTEXT_SUMMARY_LIMIT,
   SHELL_RUN_RESOURCE_PREFIX,
-  ShellRunProcessManager,
+  isWellFormedTerminalInput,
   isShellRunResourceRef,
   shellRunResourceRef,
-} from './shell-run-manager.js';
+} from './shell-run-contract.js';
 export type {
+  BackgroundTaskStopper,
+  PtyControlWriter,
+  RuntimeResourceReader,
   ShellRunBashInput,
   ShellRunProcessManagerInput,
-  ShellRunUpdate,
-} from './shell-run-manager.js';
+  ShellRunWriteInput,
+} from './shell-run-contract.js';
+export { ShellRunProcessManager } from './shell-run-manager.js';
+export type { ShellRunUpdate } from '@maka/core';
 export {
   LOCAL_WORKSPACE_EXECUTOR_FACTS,
   LocalWorkspaceExecutor,

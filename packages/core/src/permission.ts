@@ -63,6 +63,11 @@ export type ToolPermissionRule =
       effect: 'allow' | 'deny';
       kind: 'bash_exact';
       command: string;
+    }
+  | {
+      effect: 'allow' | 'deny';
+      kind: 'tool';
+      toolName: string;
     };
 
 export interface ToolPermissionRuleMatchInput {
@@ -90,6 +95,7 @@ function toolPermissionRuleMatches(
   input: Omit<ToolPermissionRuleMatchInput, 'rules'>,
 ): boolean {
   if (rule.kind === 'category') return rule.category === input.category;
+  if (rule.kind === 'tool') return rule.toolName === input.toolName;
   const command = (input.args as { command?: unknown } | null)?.command;
   return input.toolName === 'Bash' && typeof command === 'string' && command === rule.command;
 }
@@ -223,6 +229,7 @@ export const BUILTIN_TOOL_CATEGORY: Record<string, ToolCategory> = {
   patch: 'file_write',
   // shell — default unsafe; categorizeBash() may downgrade or upgrade
   Bash: 'shell_unsafe',
+  WriteStdin: 'shell_unsafe',
 };
 
 // ============================================================================
@@ -549,6 +556,8 @@ export function permissionScopeKey(toolName: string, args: unknown, category: To
       return `${category}:${toolName}:${stringArg(args, 'path')}:${stringArg(args, 'glob')}:${stringArg(args, 'pattern')}`;
     case 'Bash':
       return `${category}:${toolName}:${normalizeScopeText(stringArg(args, 'command'))}`;
+    case 'WriteStdin':
+      return `${category}:${toolName}:${writeStdinScopeArgs(args)}`;
     case 'WebSearch':
       return `${category}:${toolName}:${stringArg(args, 'query')}`;
     default:
@@ -569,6 +578,19 @@ function normalizeScopeText(value: string): string {
 function stableScopeJson(value: unknown): string {
   const json = JSON.stringify(normalizeForScope(value, new WeakSet<object>()));
   return (json ?? String(value)).slice(0, 1024);
+}
+
+function writeStdinScopeArgs(args: unknown): string {
+  const value = args && typeof args === 'object' && !Array.isArray(args)
+    ? args as Record<string, unknown>
+    : {};
+  const sideEffect: Record<string, unknown> = {
+    ref: typeof value.ref === 'string' ? value.ref : '',
+  };
+  if (typeof value.input === 'string') sideEffect.input = value.input;
+  if (value.size !== undefined) sideEffect.size = value.size;
+  const json = JSON.stringify(normalizeForScope(sideEffect, new WeakSet<object>()));
+  return json ?? String(sideEffect);
 }
 
 function normalizeForScope(value: unknown, seen: WeakSet<object>): unknown {

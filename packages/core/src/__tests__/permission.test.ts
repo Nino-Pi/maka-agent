@@ -602,6 +602,38 @@ describe('preToolUse — turnRemembered', () => {
       'custom_tool:Custom:{"a":1,"b":2}',
     );
   });
+
+  test('WriteStdin scope memory follows the exact untruncated side effect', () => {
+    const first = permissionScopeKey(
+      'WriteStdin',
+      { ref: 'maka://runtime/background-tasks/a', input: 'one' },
+      'shell_unsafe',
+    );
+    const sameEffect = permissionScopeKey(
+      'WriteStdin',
+      { input: 'one', ref: 'maka://runtime/background-tasks/a' },
+      'shell_unsafe',
+    );
+    const differentInput = permissionScopeKey(
+      'WriteStdin',
+      { ref: 'maka://runtime/background-tasks/a', input: 'two' },
+      'shell_unsafe',
+    );
+    const resized = permissionScopeKey(
+      'WriteStdin',
+      { ref: 'maka://runtime/background-tasks/a', input: 'one', size: { cols: 100, rows: 30 } },
+      'shell_unsafe',
+    );
+    expect(first).toBe(sameEffect);
+    expect(first === differentInput).toBe(false);
+    expect(first === resized).toBe(false);
+
+    const longPrefix = 'x'.repeat(1_100);
+    expect(
+      permissionScopeKey('WriteStdin', { ref: 'r', input: `${longPrefix}a` }, 'shell_unsafe') ===
+      permissionScopeKey('WriteStdin', { ref: 'r', input: `${longPrefix}b` }, 'shell_unsafe'),
+    ).toBe(false);
+  });
 });
 
 describe('preToolUse — browser permission contract', () => {

@@ -158,6 +158,32 @@ describe('PermissionEngine.evaluate — invocation-local rules', () => {
     assert.equal(normalized.kind, 'block');
   });
 
+  test('exact tool rules authorize WriteStdin without authorizing Bash', () => {
+    const rules = [{ effect: 'allow', kind: 'tool', toolName: 'WriteStdin' }] as const;
+    const { engine } = makeEngine();
+    const writeStdin = engine.evaluate({
+      sessionId: 's1',
+      turnId: 't1',
+      toolUseId: 'tu1',
+      toolName: 'WriteStdin',
+      args: { ref: 'maka://runtime/background-tasks/pty-1', input: '\\r' },
+      mode: 'explore',
+      permissionRules: rules,
+    });
+    const bash = engine.evaluate({
+      sessionId: 's1',
+      turnId: 't1',
+      toolUseId: 'tu2',
+      toolName: 'Bash',
+      args: { command: 'echo no' },
+      mode: 'explore',
+      permissionRules: rules,
+    });
+
+    assert.equal(writeStdin.kind, 'allow');
+    assert.equal(bash.kind, 'block');
+  });
+
   test('an unrelated rule preserves the permission-free tool fast path', () => {
     const { engine } = makeEngine();
     const result = engine.evaluate({
@@ -252,6 +278,31 @@ describe('PermissionEngine.evaluate — prompt path', () => {
     expect(r.event.turnId).toBe('t1');
     expect(r.event.toolUseId).toBe('tu1');
     expect(r.event.requestId).toMatch(/^id-/);
+  });
+
+  test('projects WriteStdin permission args to a bounded human-readable preview', () => {
+    const { engine } = makeEngine();
+    engine.beginTurn('t1');
+    const r = engine.evaluate({
+      sessionId: 's1',
+      turnId: 't1',
+      toolUseId: 'tu-stdin',
+      toolName: 'WriteStdin',
+      args: {
+        ref: 'maka://runtime/background-tasks/pty-1',
+        input: 'private input\r',
+        size: { cols: 100, rows: 30 },
+      },
+      mode: 'ask',
+    });
+
+    assert.equal(r.kind, 'prompt');
+    if (r.kind !== 'prompt') return;
+    assert.deepEqual(r.event.args, {
+      ref: 'maka://runtime/background-tasks/pty-1',
+      inputPreview: { text: 'private input\\r', bytes: 14, truncated: false },
+      size: { cols: 100, rows: 30 },
+    });
   });
 
   test('parked Promise resolves on recordResponse', async () => {

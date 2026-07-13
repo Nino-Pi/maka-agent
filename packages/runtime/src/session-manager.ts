@@ -18,6 +18,7 @@ import type {
   AbortEvent,
   PermissionDecisionAckEvent,
   PermissionRequestEvent,
+  ShellRunUpdate,
 } from '@maka/core/events';
 import type {
   SessionHeader,
@@ -301,6 +302,58 @@ export class SessionManager {
     return (await this.getSessionView(sessionId)).turns;
   }
 
+  async listShellRunUpdates(sessionId: string): Promise<ShellRunUpdate[]> {
+    const shellRuns = this.deps.shellRuns;
+    if (!shellRuns) return [];
+
+    const ownUpdates = await shellRuns.listSessionUpdates(sessionId);
+    const ownToolCalls = new Set(ownUpdates.map((update) => update.sourceToolCallId));
+    const messages = await this.getMessages(sessionId);
+    const bashToolCalls = new Set(messages.flatMap((message) =>
+      message.type === 'tool_call' && message.toolName === 'Bash' ? [message.id] : []
+    ));
+    const inherited = new Map<string, {
+      ref: string;
+      turnId: string;
+      toolUseId: string;
+      result: ShellRunUpdate['result'];
+    }>();
+    for (const message of messages) {
+      if (
+        message.type === 'tool_result'
+        && bashToolCalls.has(message.toolUseId)
+        && !ownToolCalls.has(message.toolUseId)
+        && message.content.kind === 'shell_run'
+        && message.content.status === 'running'
+      ) {
+        const { operation: _operation, ...result } = message.content;
+        inherited.set(message.toolUseId, {
+          ref: message.content.ref,
+          turnId: message.turnId,
+          toolUseId: message.toolUseId,
+          result,
+        });
+      }
+    }
+    if (inherited.size === 0) return ownUpdates;
+
+    const parentSessionId = (await this.deps.store.readHeader(sessionId)).parentSessionId;
+    if (!parentSessionId) return ownUpdates;
+    const inheritedUpdates = await Promise.all([...inherited.values()].map(async (candidate) => {
+      const owner = await this.resolveShellRunOwner(parentSessionId, candidate.ref);
+      return {
+        sessionId,
+        ownership: owner
+          ? { kind: 'source_owned', sourceSessionId: parentSessionId, ownerSessionId: owner.sessionId }
+          : { kind: 'source_unavailable', sourceSessionId: parentSessionId },
+        sourceTurnId: candidate.turnId,
+        sourceToolCallId: candidate.toolUseId,
+        result: owner?.result ?? candidate.result,
+      } satisfies ShellRunUpdate;
+    }));
+    return [...ownUpdates, ...inheritedUpdates];
+  }
+
   async recoverInterruptedSessions(): Promise<string[]> {
     const interrupted = (await this.deps.store.list())
       .filter((session) => session.status !== 'archived');
@@ -388,13 +441,20 @@ export class SessionManager {
   }
 
   async archive(sessionId: string): Promise<void> {
-    await this.deps.shellRuns?.terminateSession(sessionId);
-    await this.deps.store.archive(sessionId);
+    const shellRunClose = await this.deps.shellRuns?.terminateSession(sessionId);
+    try {
+      await this.deps.store.archive(sessionId);
+    } catch (error) {
+      if (shellRunClose) this.deps.shellRuns?.rollbackSessionClose(shellRunClose);
+      throw error;
+    }
+    if (shellRunClose) await this.deps.shellRuns?.commitSessionClose(shellRunClose);
     await this.runtimeKernel.disposeBackend(sessionId);
   }
 
   async unarchive(sessionId: string): Promise<void> {
     await this.deps.store.unarchive(sessionId);
+    this.deps.shellRuns?.resumeSession(sessionId);
   }
 
   async setSessionStatus(
@@ -459,9 +519,15 @@ export class SessionManager {
   }
 
   async remove(sessionId: string): Promise<void> {
-    await this.deps.shellRuns?.terminateSession(sessionId);
-    await this.runtimeKernel.disposeBackend(sessionId);
-    await this.deps.store.remove(sessionId);
+    const shellRunClose = await this.deps.shellRuns?.terminateSession(sessionId);
+    try {
+      await this.runtimeKernel.disposeBackend(sessionId);
+      await this.deps.store.remove(sessionId);
+    } catch (error) {
+      if (shellRunClose) this.deps.shellRuns?.rollbackSessionClose(shellRunClose);
+      throw error;
+    }
+    if (shellRunClose) await this.deps.shellRuns?.commitSessionClose(shellRunClose);
   }
 
   // --------------------------------------------------------------------------
@@ -720,6 +786,34 @@ export class SessionManager {
     const runs = await this.deps.runStore.listSessionRuns(sessionId).catch(() => []);
     const run = runs.find((candidate) => candidate.turnId === turnId);
     return run ? this.effectiveRunHeaderFromRuntimeLedger(run) : undefined;
+  }
+
+  private async resolveShellRunOwner(
+    firstParentSessionId: string,
+    ref: string,
+  ): Promise<{ sessionId: string; result: ShellRunUpdate['result'] } | undefined> {
+    const shellRuns = this.deps.shellRuns;
+    if (!shellRuns) return undefined;
+    let ownerSessionId: string | undefined = firstParentSessionId;
+    const visited = new Set<string>();
+    while (ownerSessionId && !visited.has(ownerSessionId)) {
+      visited.add(ownerSessionId);
+      try {
+        return {
+          sessionId: ownerSessionId,
+          result: await shellRuns.inspectResource(ownerSessionId, ref),
+        };
+      } catch (error) {
+        if (!isNotFoundError(error)) throw error;
+        try {
+          ownerSessionId = (await this.deps.store.readHeader(ownerSessionId)).parentSessionId;
+        } catch (headerError) {
+          if (isNotFoundError(headerError)) return undefined;
+          throw headerError;
+        }
+      }
+    }
+    return undefined;
   }
 
   private async findChildRunForOutput(
@@ -1046,6 +1140,10 @@ export function headerToSummary(h: SessionHeader): SessionSummary {
     summary.lastMessageAt = h.lastMessageAt;
   }
   return summary;
+}
+
+function isNotFoundError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 export function changesBackendConfig(patch: Partial<SessionHeader>): boolean {

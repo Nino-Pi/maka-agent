@@ -22,6 +22,11 @@ export type {
   ToolProgressEvent,
   ToolResultEvent,
   ToolResultContent,
+  ShellRunSnapshotResult,
+  ShellRunCompactResult,
+  ShellRunStateResult,
+  ShellRunUpdateOwnership,
+  ShellRunUpdate,
   PermissionRequestEvent,
   PermissionDecisionAckEvent,
   PlanSubmittedEvent,
@@ -144,15 +149,58 @@ export { AGENT_RUN_STATUSES } from './agent-run.js';
 
 // shell-run.ts
 export type {
+  PipeShellOutput,
+  PtyShellOutput,
+  ShellMode,
+  ShellOutput,
+  ShellRunOperation,
+  ShellRunPatch,
   ShellRunRecord,
   ShellRunStatus,
   ShellRunStore,
   ShellRunTerminalStatus,
 } from './shell-run.js';
+export type {
+  ShellRunMergeDiagnostic,
+  ShellRunMergeDiagnosticReporter,
+  ShellRunStateMerge,
+  ShellRunUpdateBufferDrain,
+  ShellRunUpdateMerge,
+  ShellRunToolResult,
+} from './shell-run-result.js';
+export {
+  SHELL_RUN_UPDATE_BUFFER_MAX_ENTRIES,
+  ShellRunUpdateBuffer,
+  mergeShellRunState,
+  mergeShellRunStateWithDiagnostics,
+  mergeShellRunUpdate,
+  projectShellRunUpdateForSession,
+  isValidLegacyShellRunState,
+  normalizeShellToolResultContent,
+  shellRunStateProjection,
+} from './shell-run-result.js';
+export type { ShellToolResultNormalization } from './shell-run-result.js';
+export {
+  ptyCompactTerminalLine,
+  ptyHumanTerminalText,
+  ptyTuiTerminalView,
+  ptyTuiTerminalRows,
+} from './pty-output-view.js';
+export type { PtyTuiTerminalView } from './pty-output-view.js';
+export {
+  projectToolActivityArgs,
+  projectWriteStdinInput,
+  readWriteStdinInputPreview,
+  WRITE_STDIN_INPUT_PREVIEW_MAX_CHARS,
+  type WriteStdinInputPreview,
+} from './tool-activity-args.js';
 export {
   SHELL_RUN_STATUSES,
   SHELL_RUN_TERMINAL_STATUSES,
+  isShellOutput,
+  isShellRunId,
   isShellRunStatus,
+  isValidShellRunState,
   isTerminalShellRunStatus,
 } from './shell-run.js';
 

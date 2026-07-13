@@ -19,6 +19,7 @@ import type {
   ToolActivityKind,
   ToolResultContent,
 } from '@maka/core';
+import { projectToolActivityArgs } from '@maka/core';
 import { toolResultActivityStatus } from '@maka/core';
 
 // ============================================================================
@@ -156,7 +157,7 @@ function toolActivityFromPair(
       ...(call.displayName !== undefined ? { displayName: call.displayName } : {}),
       ...(call.intent !== undefined ? { intent: call.intent } : {}),
       status: 'interrupted',
-      args: call.args,
+      args: projectToolActivityArgs(call.toolName, call.args),
       ts: call.ts,
     };
   }
@@ -167,7 +168,7 @@ function toolActivityFromPair(
     ...(call.displayName !== undefined ? { displayName: call.displayName } : {}),
     ...(call.intent !== undefined ? { intent: call.intent } : {}),
     status: toolResultActivityStatus(result.isError, result.content),
-    args: call.args,
+    args: projectToolActivityArgs(call.toolName, call.args),
     result: result.content,
     isError: result.isError,
     ...(result.durationMs !== undefined ? { durationMs: result.durationMs } : {}),
@@ -206,7 +207,7 @@ export function applyAppendedMessage(
         ...(message.displayName !== undefined ? { displayName: message.displayName } : {}),
         ...(message.intent !== undefined ? { intent: message.intent } : {}),
         status: 'pending',
-        args: message.args,
+        args: projectToolActivityArgs(message.toolName, message.args),
         ts: message.ts,
       };
       return { items: [...items, { kind: 'tool', item }] };

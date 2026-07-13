@@ -27,7 +27,7 @@ it('renders live thinking and text from timeline items instead of a trailing liv
   );
   assert.match(
     chatView,
-    /const settledTurns = useMemo\([\s\S]*?materializeTurns\(visibleMessages\)[\s\S]*?\[visibleMessages\][\s\S]*?const turns = useMemo\([\s\S]*?overlayLiveTurn\(settledTurns, props\.liveTurn\)/,
+    /const settledTurns = useMemo\([\s\S]*?materializeTurns\(visibleMessages\)[\s\S]*?\[visibleMessages\][\s\S]*?const liveTurns = useMemo\([\s\S]*?overlayLiveTurn\(settledTurns, props\.liveTurn\)[\s\S]*?const turns = useMemo\([\s\S]*?overlayShellRunUpdates\(liveTurns, props\.shellRunUpdates \?\? \[\]\)/,
   );
   assert.doesNotMatch(chatView, /materializeTurns\(visibleMessages, props\.liveTurn\)/);
 

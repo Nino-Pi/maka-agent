@@ -110,6 +110,7 @@ import {
   useAppShellPersistenceEffects,
   useAppShellNavRefSync,
   useSessionEventHealthPolling,
+  useShellRunUpdates,
   useSettledSessionTransientReconcile,
 } from './app-shell-effects';
 import { loadComposerDefaults, saveComposerDefaults } from './composer-defaults';
@@ -173,6 +174,7 @@ export function AppShell({
     setMessageRetryPendingBySession,
     setStopPendingBySession,
     setLiveTurnBySession,
+    setShellRunUpdatesBySession,
     setPermissionBySession,
     setSessionEventHealthBySession,
     setPendingPermissionModeBySession,
@@ -197,6 +199,7 @@ export function AppShell({
     messageRetryPendingBySession,
     stopPendingBySession,
     liveTurnBySession,
+    shellRunUpdatesBySession,
     permissionBySession,
     sessionEventHealthBySession,
     pendingPermissionModeBySession,
@@ -277,6 +280,10 @@ export function AppShell({
   // kill-switch pill (visible indicator + one-click clear).
   const activeGoal = useSessionGoal(activeId);
   const activeLiveTurn = activeId ? liveTurnBySession[activeId] : undefined;
+  const activeShellRunUpdates = useMemo(
+    () => activeId ? Object.values(shellRunUpdatesBySession[activeId] ?? {}) : [],
+    [activeId, shellRunUpdatesBySession],
+  );
   const activeTextStep = [...(activeLiveTurn?.steps ?? [])].reverse().find((step) => step.text);
   const activeThinkingStep = [...(activeLiveTurn?.steps ?? [])].reverse().find((step) => step.thinking);
   const activeStreaming = activeTextStep?.text?.text ?? '';
@@ -1095,6 +1102,7 @@ export function AppShell({
     setSessionEventHealthBySession,
     toastApi,
   });
+  useShellRunUpdates({ activeId, setShellRunUpdatesBySession });
   useSessionEventHealthPolling({
     activeId,
     activePermission,
@@ -1481,6 +1489,7 @@ export function AppShell({
               <ChatView
                 messages={messages}
                 liveTurn={activeLiveTurn}
+                shellRunUpdates={activeShellRunUpdates}
                 messageLoading={activeMessageLoading}
                 processingIndicator={showProcessingIndicator}
                 continuingIndicator={showContinuingIndicator}
