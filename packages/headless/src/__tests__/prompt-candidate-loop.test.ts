@@ -373,6 +373,13 @@ describe('prompt candidate loop', () => {
     );
   });
 
+  test('rejects candidateRationale for a non-prompt edited surface', async () => {
+    await assertRejectsCandidateRationale(
+      validCandidateRationale({ editedSurface: 'tool_contract' }),
+      /candidateRationale.editedSurface must be "system_prompt"/,
+    );
+  });
+
   test('rejects candidateRationale evidence refs outside the current RSI analysis', async () => {
     await withDir(async (dir) => {
       const programPath = join(dir, 'program.md');
@@ -403,7 +410,10 @@ describe('prompt candidate loop', () => {
             signals: [{ id: 'rsi-sig:known', kind: 'coverage_regression', taskIds: ['task-a'] }],
           },
           metaAgent: async () => candidatePromptResult({
-            candidateRationale: validCandidateRationale({ evidenceRefs: ['rsi-sig:unknown'] }),
+            candidateRationale: validCandidateRationale({
+              evidenceRefs: ['rsi-sig:unknown'],
+              failurePattern: undefined,
+            }),
           }),
           git: gitNoop(dir),
           now: () => 100,
@@ -416,7 +426,7 @@ describe('prompt candidate loop', () => {
     });
   });
 
-  test('requires evidence refs when current RSI analysis has signals for a typed failure pattern', async () => {
+  test('requires direct evidence when signals exist and otherwise requires a coarse fallback', async () => {
     await withDir(async (dir) => {
       const programPath = join(dir, 'program.md');
       const systemPromptPath = join(dir, 'system_prompt.md');
@@ -461,6 +471,46 @@ describe('prompt candidate loop', () => {
 
       await runPromptCandidateRound({
         ...baseInput,
+        resultsJsonlPath: join(dir, 'signal-ref-without-fallback.jsonl'),
+        rsiAnalysis: {
+          heldInTaskSetHash: 'sha256:held-in',
+          transitionVsLastKept: [],
+          transitionVsPreviousCandidate: [],
+          coverageRegressionTaskIds: [],
+          errorClassDistribution: [],
+          toolFailureClusters: [],
+          signals: [{ id: 'rsi-sig:known', kind: 'coverage_regression', taskIds: ['task-a'] }],
+        },
+        metaAgent: async () => candidatePromptResult({
+          candidateRationale: validCandidateRationale({
+            evidenceRefs: ['rsi-sig:known'],
+            failurePattern: undefined,
+          }),
+        }),
+      });
+
+      await assert.rejects(
+        runPromptCandidateRound({
+          ...baseInput,
+          resultsJsonlPath: join(dir, 'redundant-fallback.jsonl'),
+          rsiAnalysis: {
+            heldInTaskSetHash: 'sha256:held-in',
+            transitionVsLastKept: [],
+            transitionVsPreviousCandidate: [],
+            coverageRegressionTaskIds: [],
+            errorClassDistribution: [],
+            toolFailureClusters: [],
+            signals: [{ id: 'rsi-sig:known', kind: 'coverage_regression', taskIds: ['task-a'] }],
+          },
+          metaAgent: async () => candidatePromptResult({
+            candidateRationale: validCandidateRationale({ evidenceRefs: ['rsi-sig:known'] }),
+          }),
+        }),
+        /candidateRationale.failurePattern must be omitted when evidenceRefs cites current analysis/,
+      );
+
+      await runPromptCandidateRound({
+        ...baseInput,
         resultsJsonlPath: join(dir, 'allowed-empty-refs.jsonl'),
         rsiAnalysis: {
           heldInTaskSetHash: 'sha256:held-in',
@@ -475,6 +525,20 @@ describe('prompt candidate loop', () => {
           candidateRationale: validCandidateRationale({ evidenceRefs: [] }),
         }),
       });
+
+      await assert.rejects(
+        runPromptCandidateRound({
+          ...baseInput,
+          resultsJsonlPath: join(dir, 'missing-fallback.jsonl'),
+          metaAgent: async () => candidatePromptResult({
+            candidateRationale: validCandidateRationale({
+              evidenceRefs: [],
+              failurePattern: undefined,
+            }),
+          }),
+        }),
+        /candidateRationale.failurePattern fallback is required when evidenceRefs is empty/,
+      );
     });
   });
 
@@ -2104,12 +2168,13 @@ function candidatePromptResult(input: {
 
 function validCandidateRationale(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    failurePattern: 'coverage_regression',
+    editedSurface: 'system_prompt',
     evidenceRefs: [],
     hypothesis: 'coverage fell after the previous prompt change',
     targetedFix: 'keep the completion criteria explicit and conservative',
     predictedFixes: [],
     riskTasks: [],
+    failurePattern: 'coverage_regression',
     ...overrides,
   };
 }

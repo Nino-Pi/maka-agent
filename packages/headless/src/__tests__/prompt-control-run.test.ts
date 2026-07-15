@@ -23,12 +23,13 @@ describe('runPromptControlExperiment', () => {
             : input.currentSystemPrompt,
           summary: learnedFromHeldIn ? 'added the missing control rule' : 'no control signal found',
           candidateRationale: {
-            failurePattern: signal ? 'verification_failed' : 'other',
+            editedSurface: 'system_prompt',
             evidenceRefs: signal ? [signal.id] : [],
             hypothesis: 'held-in failures share one missing prompt rule',
             targetedFix: 'add the shared rule without task-specific answers',
             predictedFixes: ['control-held-in-a', 'control-held-in-b'],
             riskTasks: [],
+            ...(!signal ? { failurePattern: 'other' as const } : {}),
           },
         };
       };

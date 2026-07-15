@@ -433,12 +433,13 @@ describe('runPromptOptimizationRun', () => {
             systemPrompt: `candidate prompt ${promptInput.roundId}\n`,
             summary: `tuned for ${promptInput.roundId}`,
             candidateRationale: {
-              failurePattern: 'coverage_regression',
+              editedSurface: 'system_prompt',
               evidenceRefs: signal ? [signal.id] : [],
               hypothesis: 'make the success criteria explicit',
               targetedFix: 'clarify the prompt without task-specific answers',
               predictedFixes: [],
               riskTasks: [],
+              ...(!signal ? { failurePattern: 'coverage_regression' as const } : {}),
             },
           };
         },
@@ -534,12 +535,13 @@ describe('runPromptOptimizationRun', () => {
             systemPrompt: `candidate prompt ${promptInput.roundId}\n`,
             summary: `tuned for ${promptInput.roundId}`,
             candidateRationale: {
-              failurePattern: 'coverage_regression',
+              editedSurface: 'system_prompt',
               evidenceRefs: signal ? [signal.id] : [],
               hypothesis: 'make the success criteria explicit',
               targetedFix: 'clarify the prompt without task-specific answers',
               predictedFixes: [],
               riskTasks: [],
+              ...(!signal ? { failurePattern: 'coverage_regression' as const } : {}),
             },
           };
         },
@@ -577,6 +579,7 @@ describe('runPromptOptimizationRun', () => {
 
       const resultsJsonlPath = join(controllerDir, 'results.jsonl');
       const candidateRationale = {
+        editedSurface: 'system_prompt' as const,
         failurePattern: 'coverage_regression' as const,
         evidenceRefs: [],
         hypothesis: 'restore held-in coverage',
