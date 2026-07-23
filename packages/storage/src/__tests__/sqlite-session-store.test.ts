@@ -68,20 +68,51 @@ describe('default SQLite session metadata store', () => {
     const store = createSessionStore(root);
     try {
       const parent = await store.create(makeInput({ name: 'Parent' }));
-      const child = await store.create(
-        makeInput({
-          name: 'Child',
-          subagentParent: {
-            kind: 'subagent',
-            parentSessionId: parent.id,
-            spawnedBy: {
-              parentRunId: 'parent-run',
-              parentTurnId: 'parent-turn',
-              toolCallId: 'tool-call',
-            },
-            lifecycle: 'foreground',
+      const childInput = makeInput({
+        name: 'Child',
+        subagentParent: {
+          kind: 'subagent',
+          parentSessionId: parent.id,
+          spawnedBy: {
+            parentRunId: 'parent-run',
+            parentTurnId: 'parent-turn',
+            toolCallId: 'tool-call',
           },
-        }),
+          lifecycle: 'foreground',
+        },
+        subagentRuntime: {
+          schemaVersion: 1,
+          definitionVersion: 1,
+          agentId: 'local-read',
+          agentName: 'Local Read',
+          profile: 'local_read',
+          systemPrompt: 'Read the assigned workspace task.',
+          toolNames: ['Read', 'Glob', 'Grep'],
+          categoryPolicy: { read: 'allow' },
+          permissionCeiling: 'ask',
+        },
+        subagentSpawn: {
+          schemaVersion: 1,
+          requestFingerprint: 'a'.repeat(64),
+          initialTurnId: 'child-turn',
+          initialRunId: 'child-run',
+        },
+      });
+      const { header: child, created } = await store.createSubagent(childInput);
+      assert.equal(created, true);
+      const retry = await store.createSubagent(childInput);
+      assert.equal(retry.created, false);
+      assert.equal(retry.header.id, child.id);
+      await assert.rejects(
+        () =>
+          store.createSubagent({
+            ...childInput,
+            subagentSpawn: {
+              ...childInput.subagentSpawn!,
+              requestFingerprint: 'b'.repeat(64),
+            },
+          }),
+        /reused for different work/,
       );
       await store.create(
         makeInput({
@@ -97,6 +128,7 @@ describe('default SQLite session metadata store', () => {
         [child.id],
       );
       assert.equal(children[0]?.subagentParent?.parentSessionId, parent.id);
+      assert.deepEqual(children[0]?.subagentRuntime?.toolNames, ['Read', 'Glob', 'Grep']);
     } finally {
       store.close?.();
       await rm(root, { recursive: true, force: true });

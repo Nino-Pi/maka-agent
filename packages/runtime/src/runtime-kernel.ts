@@ -5,7 +5,7 @@ import type {
   RuntimeEventStore,
   ToolBoundaryProtocol,
 } from '@maka/core';
-import { isSessionInlineRun } from '@maka/core';
+import { isPermissionModeWithinCeiling, isSessionInlineRun } from '@maka/core';
 import type {
   CompleteEvent,
   QueueEnqueueOutcome,
@@ -101,6 +101,7 @@ export interface RuntimeKernelLike {
   /** Take back every queued message (both queues) as one `\n\n`-joined string. */
   retractQueue(sessionId: string): string;
   hasActiveRuns(sessionId: string): boolean;
+  hasActiveRun?(sessionId: string, runId: string, turnId?: string): boolean;
   updateCachedHeader(sessionId: string, header: SessionHeader): void;
   invalidateBackend(sessionId: string): Promise<void>;
   disposeBackend(sessionId: string): Promise<void>;
@@ -1291,6 +1292,13 @@ export class RuntimeKernel implements RuntimeKernelLike {
     return this.activeSessionsFor(sessionId).some((active) => active.activeRuns.size > 0);
   }
 
+  hasActiveRun(sessionId: string, runId: string, turnId?: string): boolean {
+    return this.activeSessionsFor(sessionId).some((active) => {
+      const run = active.activeRuns.get(runId);
+      return run !== undefined && (turnId === undefined || run.turnId === turnId);
+    });
+  }
+
   updateCachedHeader(sessionId: string, header: SessionHeader): void {
     const active = this.active.get(sessionId);
     if (active) active.cachedHeader = header;
@@ -1438,11 +1446,18 @@ export class RuntimeKernel implements RuntimeKernelLike {
       existing.cachedHeader = header;
       return existing;
     }
+    const subagent = this.resolveSubagentActivation(header);
     const backend = await this.deps.backends.build(header.backend, {
       sessionId,
       workspaceRoot: header.workspaceRoot,
       header,
       store: this.deps.store,
+      ...(subagent
+        ? {
+            systemPrompt: subagent.systemPrompt,
+            tools: subagent.tools,
+          }
+        : {}),
       recordRunTrace: (event) => {
         const active = this.active.get(sessionId);
         const runId = active?.turnToRunId.get(event.turnId);
@@ -1509,6 +1524,36 @@ export class RuntimeKernel implements RuntimeKernelLike {
     };
     this.active.set(sessionId, entry);
     return entry;
+  }
+
+  private resolveSubagentActivation(
+    header: SessionHeader,
+  ): { systemPrompt: string; tools: MakaTool[] } | undefined {
+    const snapshot = header.subagentRuntime;
+    if (!snapshot) {
+      if (header.subagentParent) {
+        throw new Error('Linked child session is missing its durable runtime snapshot');
+      }
+      return undefined;
+    }
+    if (!header.subagentParent) {
+      throw new Error('Subagent runtime snapshot requires a linked child session');
+    }
+    if (!isPermissionModeWithinCeiling(header.permissionMode, snapshot.permissionCeiling)) {
+      throw new Error('Subagent runtime permission mode exceeds its durable ceiling');
+    }
+    const snapshotDefinition = {
+      id: snapshot.agentId,
+      permissionMode: header.permissionMode,
+      tools: snapshot.toolNames,
+      categoryPolicy: snapshot.categoryPolicy,
+    };
+    const availableTools = this.deps.childTools ?? [];
+    const tools = buildToolsForAgentDefinition(availableTools, snapshotDefinition);
+    if (tools.length !== snapshot.toolNames.length) {
+      throw new Error('Subagent runtime tool snapshot is unavailable');
+    }
+    return { systemPrompt: snapshot.systemPrompt, tools };
   }
 
   private async ensureChildActive(
